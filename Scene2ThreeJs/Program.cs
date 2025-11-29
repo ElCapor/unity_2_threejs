@@ -1,5 +1,7 @@
 ﻿using AssetsTools.NET;
 using AssetsTools.NET.Extra;
+using Vec3 = Vim.Math3d.Vector3;
+
 
 public interface IFromAssetTypeValueField<T>
 {
@@ -141,13 +143,48 @@ public class Component : UnityObject
 /// <summary>
 /// Wrapper for Transform
 /// </summary>
-public class Transform : UnityObject
+public class Transform : Component
 {
     public PPtr<GameObject> m_GameObject =>
         PPtr<GameObject>.From(this["m_GameObject"]);
 
     public PPtr<Transform> m_Father =>
         PPtr<Transform>.From(this["m_Father"]);
+}
+
+
+
+public class TerrainData : Component
+{
+    // Terrain dimensions
+    public Vec3 m_Heightmap_Scale => new Vec3(
+        this["m_Heightmap.m_Scale.x"].AsFloat,
+        this["m_Heightmap.m_Scale.y"].AsFloat,
+        this["m_Heightmap.m_Scale.z"].AsFloat
+    );
+
+    public int m_Heightmap_Resolution => this["m_Heightmap.m_Resolution"].AsInt;
+
+    // Heights are stored as 16-bit integers (0-65535)
+    public short[] m_Heightmap_Heights
+    {
+        get
+        {
+            var heightsField = this["m_Heightmap.m_Heights"];
+            var byteArray = heightsField.AsByteArray;
+
+            // Convert bytes to shorts
+            short[] heights = new short[byteArray.Length / 2];
+            Buffer.BlockCopy(byteArray, 0, heights, 0, byteArray.Length);
+            return heights;
+        }
+    }
+}
+
+public class Terrain : Component
+{
+    public PPtr<TerrainData> m_TerrainData =>
+        PPtr<TerrainData>.From(this["m_TerrainData"]);
 }
 
 /// <summary>
@@ -160,6 +197,7 @@ public class Level
     public AssetsManager assetsManager;
 
     public List<Transform> rootTransforms;
+    public List<GameObject> rootGameObjects;
 
     public Level(AssetsManager assetsManager, string filePath)
     {
@@ -171,6 +209,7 @@ public class Level
         assetsManager.LoadClassDatabaseFromPackage(file.Metadata.UnityVersion);
 
         rootTransforms = GetRootTransforms();
+        rootGameObjects = GetRootGameObjects();
     }
 
     public List<Transform> GetRootTransforms()
@@ -194,8 +233,24 @@ public class Level
 
         return result;
     }
-}
 
+    public List<GameObject> GetRootGameObjects()
+    {
+        List<GameObject> result = new();
+        if (this.rootTransforms.Count == 0)
+        {
+            return result;
+        }
+
+        foreach (var t in this.rootTransforms)
+        {
+            var go = t.m_GameObject.GetObject(fileInstance, assetsManager);
+            result.Add(go);
+        }
+
+        return result;
+    }
+}
 
 public class Core
 {
@@ -208,23 +263,40 @@ public class Core
         string filePath = Path.Combine(GamePath, "level2");
         Level level = new Level(assetsManager, filePath);
 
-        foreach (var t in level.rootTransforms)
+        foreach (GameObject obj in level.rootGameObjects)
         {
-            var go = t.m_GameObject.GetObject(level.fileInstance, assetsManager);
-            foreach (ComponentPair compPair in go.m_Component.Items)
+            foreach (ComponentPair compPair in obj.m_Component.Items)
             {
                 var fullCompInfo = compPair.component.GetExt(level.fileInstance, level.assetsManager);
                 var compTypeInfo = (AssetClassID)fullCompInfo.info.TypeId;
 
-                if (compTypeInfo == AssetClassID.Transform)
+                if (compTypeInfo == AssetClassID.Terrain)
                 {
-                    var transform = new Transform();
-                    transform.SetField(fullCompInfo.baseField);
-                    Console.WriteLine(transform.m_GameObject.GetObject(level.fileInstance, level.assetsManager).m_Name);
+                    var terrain = new Terrain();
+                    terrain.SetField(fullCompInfo.baseField);
                 }
             }
-            Console.WriteLine(go.m_Name);
         }
+        /*
+                foreach (var t in level.rootTransforms)
+                {
+                    var go = t.m_GameObject.GetObject(level.fileInstance, assetsManager);
+                    foreach (ComponentPair compPair in go.m_Component.Items)
+                    {
+                        var fullCompInfo = compPair.component.GetExt(level.fileInstance, level.assetsManager);
+                        var compTypeInfo = (AssetClassID)fullCompInfo.info.TypeId;
+
+                        if (compTypeInfo == AssetClassID.Transform)
+                        {
+                            var transform = new Transform();
+                            transform.SetField(fullCompInfo.baseField);
+                            Console.WriteLine(transform.m_GameObject.GetObject(level.fileInstance, level.assetsManager).m_Name);
+                        }
+                    }
+                    Console.WriteLine(go.m_Name);
+                }
+            }
+            */
     }
 
     public static void Init()
