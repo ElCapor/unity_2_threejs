@@ -23,13 +23,18 @@ public abstract class UnityObject : IFromAssetTypeValueField<UnityObject>
         return wrapper;
     }
 
+    public void SetField(AssetTypeValueField field)
+    {
+        baseField = field;
+    }
+
     public AssetTypeValueField this[string key] => baseField![key];
 }
 
 /// <summary>
 /// Wrapper for PPtr<T>
 /// </summary>
-public class PPtr<T> where T : UnityObject, new()
+public class PPtr<T> : IFromAssetTypeValueField<PPtr<T>> where T : UnityObject, new()
 {
     public int FileID { get; }
     public long PathID { get; }
@@ -66,7 +71,6 @@ public class PPtr<T> where T : UnityObject, new()
 /// </summary>
 /// <typeparam name="T"></typeparam>
 public class Vector<T> : UnityObject
-where T : IFromAssetTypeValueField<T>
 {
     public List<T> Items
     {
@@ -74,9 +78,33 @@ where T : IFromAssetTypeValueField<T>
         {
             var array = this["Array"];
             List<T> items = new List<T>();
+
+            // Get the type of T
+            var type = typeof(T);
+
             foreach (var item in array)
             {
-                items.Add(T.From(item));
+                // Check if T is a PPtr<> type
+                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(PPtr<>))
+                {
+                    // Call PPtr<>.From using reflection
+                    var fromMethod = type.GetMethod("From", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    var result = fromMethod!.Invoke(null, new object[] { item });
+                    items.Add((T)result!);
+                }
+                // Check if T is a UnityObject subclass
+                else if (typeof(UnityObject).IsAssignableFrom(type))
+                {
+                    // Call UnityObject.From<T> using reflection
+                    var fromMethod = typeof(UnityObject).GetMethod("From", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    var genericMethod = fromMethod!.MakeGenericMethod(type);
+                    var result = genericMethod.Invoke(null, new object[] { item });
+                    items.Add((T)result!);
+                }
+                else
+                {
+                    throw new NotSupportedException($"Type {type.Name} is not supported in Vector<T>");
+                }
             }
             return items;
         }
@@ -90,14 +118,14 @@ where T : IFromAssetTypeValueField<T>
 public class GameObject : UnityObject
 {
     public string m_Name => this["m_Name"].AsString;
-    public Vector<PPtr<Component>> m_Component =>
-        Vector<PPtr<Component>>.From(this["m_Component"]);
+    public Vector<ComponentPair> m_Component =>
+        Vector<ComponentPair>.From<Vector<ComponentPair>>(this["m_Component"]);
 }
 
 public class ComponentPair : UnityObject
 {
-    public Vector<PPtr<Component>> data =>
-        Vector<PPtr<Component>>.From(this["data"]);
+    public PPtr<Component> component =>
+        PPtr<Component>.From(this["component"]);
 
 
 }
@@ -182,8 +210,20 @@ public class Core
 
         foreach (var t in level.rootTransforms)
         {
-            string name = t.m_GameObject.GetObject(level.fileInstance, assetsManager).m_Name;
-            Console.WriteLine(name);
+            var go = t.m_GameObject.GetObject(level.fileInstance, assetsManager);
+            foreach (ComponentPair compPair in go.m_Component.Items)
+            {
+                var fullCompInfo = compPair.component.GetExt(level.fileInstance, level.assetsManager);
+                var compTypeInfo = (AssetClassID)fullCompInfo.info.TypeId;
+
+                if (compTypeInfo == AssetClassID.Transform)
+                {
+                    var transform = new Transform();
+                    transform.SetField(fullCompInfo.baseField);
+                    Console.WriteLine(transform.m_GameObject.GetObject(level.fileInstance, level.assetsManager).m_Name);
+                }
+            }
+            Console.WriteLine(go.m_Name);
         }
     }
 
