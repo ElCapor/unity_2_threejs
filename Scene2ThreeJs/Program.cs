@@ -1,6 +1,7 @@
 ﻿using AssetsTools.NET;
 using AssetsTools.NET.Extra;
 using Vec3 = Vim.Math3d.Vector3;
+using Vec4 = Vim.Math3d.Vector4;
 
 namespace Scene2ThreeJs;
 
@@ -268,16 +269,51 @@ public class Core
         string filePath = Path.Combine(GamePath, "level2");
         Level level = new Level(assetsManager, filePath);
 
-        // Find and export terrain data
-        bool terrainFound = false;
+        // Collect all terrains with their positions
+        var terrainsJson = new TerrainsJson();
 
         foreach (GameObject obj in level.rootGameObjects)
         {
+            // Get transform for position, rotation, scale
+            Vec3 position = new Vec3(0, 0, 0);
+            Vec4 rotation = new Vec4(0, 0, 0, 1);
+            Vec3 scale = new Vec3(1, 1, 1);
+
             foreach (ComponentPair compPair in obj.m_Component.Items)
             {
                 var fullCompInfo = compPair.component.GetExt(level.fileInstance, level.assetsManager);
                 var compTypeInfo = (AssetClassID)fullCompInfo.info.TypeId;
 
+                // Get transform first for position
+                if (compTypeInfo == AssetClassID.Transform)
+                {
+                    // Get position from transform
+                    var posField = fullCompInfo.baseField["m_LocalPosition"];
+                    position = new Vec3(
+                        posField["x"].AsFloat,
+                        posField["y"].AsFloat,
+                        posField["z"].AsFloat
+                    );
+
+                    // Rotation (Quaternion)
+                    var rotField = fullCompInfo.baseField["m_LocalRotation"];
+                    rotation = new Vec4(
+                        rotField["x"].AsFloat,
+                        rotField["y"].AsFloat,
+                        rotField["z"].AsFloat,
+                        rotField["w"].AsFloat
+                    );
+
+                    // Scale
+                    var scaleField = fullCompInfo.baseField["m_LocalScale"];
+                    scale = new Vec3(
+                        scaleField["x"].AsFloat,
+                        scaleField["y"].AsFloat,
+                        scaleField["z"].AsFloat
+                    );
+                }
+
+                // Check for terrain component
                 if (compTypeInfo == AssetClassID.Terrain)
                 {
                     Console.WriteLine($"Found terrain on GameObject: {obj.m_Name}");
@@ -285,30 +321,32 @@ public class Core
                     var terrain = new Terrain();
                     terrain.SetField(fullCompInfo.baseField);
 
+                    // Log PathID to check for uniqueness
+                    var terrainDataPtr = terrain.m_TerrainData;
+                    Console.WriteLine($"  TerrainData PathID: {terrainDataPtr.PathID}");
+
                     // Get terrain data
-                    var terrainData = terrain.m_TerrainData.GetObject(level.fileInstance, level.assetsManager);
+                    var terrainData = terrainDataPtr.GetObject(level.fileInstance, level.assetsManager);
 
-                    // Export to JSON
-                    var terrainJson = TerrainExporter.ExportTerrain(terrainData);
-
-                    // Create Export directory if it doesn't exist
-                    string exportDir = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "Export");
-                    Directory.CreateDirectory(exportDir);
-
-                    string outputPath = Path.Combine(exportDir, "terrain.json");
-                    TerrainExporter.ExportToFile(terrainJson, outputPath);
-
-                    terrainFound = true;
-                    break;
+                    // Export terrain with transform data
+                    var terrainInstance = TerrainExporter.ExportTerrain(obj.m_Name, position, rotation, scale, terrainData);
+                    terrainsJson.Terrains.Add(terrainInstance);
                 }
             }
-
-            if (terrainFound) break;
         }
 
-        if (!terrainFound)
+        if (terrainsJson.Terrains.Count > 0)
         {
-            Console.WriteLine("No terrain found in the scene.");
+            // Create Export directory if it doesn't exist
+            string exportDir = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "Export");
+            Directory.CreateDirectory(exportDir);
+
+            string outputPath = Path.Combine(exportDir, "terrain.json");
+            TerrainExporter.ExportToFile(terrainsJson, outputPath);
+        }
+        else
+        {
+            Console.WriteLine("No terrains found in the scene.");
         }
     }
 
