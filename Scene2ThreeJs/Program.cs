@@ -2,6 +2,7 @@
 using AssetsTools.NET.Extra;
 using Vec3 = Vim.Math3d.Vector3;
 
+namespace Scene2ThreeJs;
 
 public interface IFromAssetTypeValueField<T>
 {
@@ -152,6 +153,10 @@ public class Transform : Component
         PPtr<Transform>.From(this["m_Father"]);
 }
 
+public class SInt16 : UnityObject
+{
+    public Int16 Value => this.baseField.AsShort;
+}
 
 
 public class TerrainData : Component
@@ -170,11 +175,11 @@ public class TerrainData : Component
     {
         get
         {
-            var heightsField = this["m_Heightmap.m_Heights"];
-            var byteArray = heightsField.AsByteArray;
+            Vector<SInt16> heightsField = Vector<SInt16>.From<Vector<SInt16>>(this["m_Heightmap.m_Heights"]);
+            var byteArray = heightsField.Items.Select(h => h.Value).ToArray();
 
             // Convert bytes to shorts
-            short[] heights = new short[byteArray.Length / 2];
+            short[] heights = new short[byteArray.Length];
             Buffer.BlockCopy(byteArray, 0, heights, 0, byteArray.Length);
             return heights;
         }
@@ -263,6 +268,9 @@ public class Core
         string filePath = Path.Combine(GamePath, "level2");
         Level level = new Level(assetsManager, filePath);
 
+        // Find and export terrain data
+        bool terrainFound = false;
+
         foreach (GameObject obj in level.rootGameObjects)
         {
             foreach (ComponentPair compPair in obj.m_Component.Items)
@@ -272,31 +280,36 @@ public class Core
 
                 if (compTypeInfo == AssetClassID.Terrain)
                 {
+                    Console.WriteLine($"Found terrain on GameObject: {obj.m_Name}");
+
                     var terrain = new Terrain();
                     terrain.SetField(fullCompInfo.baseField);
-                }
-            }
-        }
-        /*
-                foreach (var t in level.rootTransforms)
-                {
-                    var go = t.m_GameObject.GetObject(level.fileInstance, assetsManager);
-                    foreach (ComponentPair compPair in go.m_Component.Items)
-                    {
-                        var fullCompInfo = compPair.component.GetExt(level.fileInstance, level.assetsManager);
-                        var compTypeInfo = (AssetClassID)fullCompInfo.info.TypeId;
 
-                        if (compTypeInfo == AssetClassID.Transform)
-                        {
-                            var transform = new Transform();
-                            transform.SetField(fullCompInfo.baseField);
-                            Console.WriteLine(transform.m_GameObject.GetObject(level.fileInstance, level.assetsManager).m_Name);
-                        }
-                    }
-                    Console.WriteLine(go.m_Name);
+                    // Get terrain data
+                    var terrainData = terrain.m_TerrainData.GetObject(level.fileInstance, level.assetsManager);
+
+                    // Export to JSON
+                    var terrainJson = TerrainExporter.ExportTerrain(terrainData);
+
+                    // Create Export directory if it doesn't exist
+                    string exportDir = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "Export");
+                    Directory.CreateDirectory(exportDir);
+
+                    string outputPath = Path.Combine(exportDir, "terrain.json");
+                    TerrainExporter.ExportToFile(terrainJson, outputPath);
+
+                    terrainFound = true;
+                    break;
                 }
             }
-            */
+
+            if (terrainFound) break;
+        }
+
+        if (!terrainFound)
+        {
+            Console.WriteLine("No terrain found in the scene.");
+        }
     }
 
     public static void Init()

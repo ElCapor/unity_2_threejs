@@ -9,14 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="AssetsTools.NET" Version="3.0.2" />
-    <PackageReference Include="MemoryPack" Version="1.21.4" />
-    <PackageReference Include="MemoryPack.Core" Version="1.21.4" />
-    <PackageReference Include="MemoryPack.Generator" Version="1.21.4">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="MemoryPack.Streaming" Version="1.21.4" />
-    <PackageReference Include="MemoryPack.UnityShims" Version="1.21.4" />
+    <PackageReference Include="Vim.Math3D" Version="1.7.0" />
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
