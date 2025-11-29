@@ -1,360 +1,121 @@
 ﻿using AssetsTools.NET;
 using AssetsTools.NET.Extra;
-using Vec3 = Vim.Math3d.Vector3;
-using Vec4 = Vim.Math3d.Vector4;
+using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.IO;
 
-namespace Scene2ThreeJs;
-
-public interface IFromAssetTypeValueField<T>
+namespace TerrainRipper
 {
-    public static T From(AssetTypeValueField field)
+    class Program
     {
-        throw new NotImplementedException();
-    }
-}
+        // Change this path to your game location
+        const string GamePath = @"C:\Program Files (x86)\Steam\steamapps\common\Eterspire\Eterspire_Data";
 
-/// <summary>
-/// Wrapper for AssetTypeValueField
-/// </summary>
-public abstract class UnityObject : IFromAssetTypeValueField<UnityObject>
-{
-    protected AssetTypeValueField? baseField = null;
+        static AssetsManager am;
 
-    public static T From<T>(AssetTypeValueField field) where T : UnityObject, new()
-    {
-        var wrapper = new T();
-        wrapper.baseField = field;
-        return wrapper;
-    }
-
-    public void SetField(AssetTypeValueField field)
-    {
-        baseField = field;
-    }
-
-    public AssetTypeValueField this[string key] => baseField![key];
-}
-
-/// <summary>
-/// Wrapper for PPtr<T>
-/// </summary>
-public class PPtr<T> : IFromAssetTypeValueField<PPtr<T>> where T : UnityObject, new()
-{
-    public int FileID { get; }
-    public long PathID { get; }
-
-    private PPtr(int fileID, long pathID)
-    {
-        FileID = fileID;
-        PathID = pathID;
-    }
-
-    public static PPtr<T> From(AssetTypeValueField pptr)
-    {
-        int fileID = pptr["m_FileID"].AsInt;
-        long pathID = pptr["m_PathID"].AsLong;
-
-        return new PPtr<T>(fileID, pathID);
-    }
-
-    public AssetExternal GetExt(AssetsFileInstance fileInst, AssetsManager manager)
-    {
-        return manager.GetExtAsset(fileInst, FileID, PathID);
-    }
-
-    public T GetObject(AssetsFileInstance fileInst, AssetsManager manager)
-    {
-        var ext = GetExt(fileInst, manager);
-
-        return UnityObject.From<T>(ext.baseField);
-    }
-}
-
-/// <summary>
-/// Represents an array of AssetTypeValueField (or wrapped T)
-/// </summary>
-/// <typeparam name="T"></typeparam>
-public class Vector<T> : UnityObject
-{
-    public List<T> Items
-    {
-        get
+        static void Main(string[] args)
         {
-            var array = this["Array"];
-            List<T> items = new List<T>();
+            am = new AssetsManager();
 
-            // Get the type of T
-            var type = typeof(T);
+            // You only need classdata.tpk (or uncompressed.tpk) for geometry
+            am.LoadClassPackage( "uncompressed.tpk" );
 
-            foreach (var item in array)
+            // Look for level files
+            var levelFiles = Directory.GetFiles( GamePath, "level2" );
+
+            foreach (string file in levelFiles)
             {
-                // Check if T is a PPtr<> type
-                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(PPtr<>))
+                try
                 {
-                    // Call PPtr<>.From using reflection
-                    var fromMethod = type.GetMethod("From", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                    var result = fromMethod!.Invoke(null, new object[] { item });
-                    items.Add((T)result!);
+                    Console.WriteLine( $"Opening {Path.GetFileName( file )}..." );
+                    var inst = am.LoadAssetsFile( file, true );
+
+                    am.LoadClassDatabaseFromPackage( inst.file.Metadata.UnityVersion );
+
+                    // Find TerrainData
+                    var terrainInfos = inst.file.GetAssetsOfType( AssetClassID.TerrainData );
+
+                    foreach (var inf in terrainInfos)
+                    {
+                        var baseField = am.GetBaseField( inst, inf );
+                        ExportGeometryOnly( baseField, $"Terrain_{inf.PathId}" );
+                    }
                 }
-                // Check if T is a UnityObject subclass
-                else if (typeof(UnityObject).IsAssignableFrom(type))
-                {
-                    // Call UnityObject.From<T> using reflection
-                    var fromMethod = typeof(UnityObject).GetMethod("From", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                    var genericMethod = fromMethod!.MakeGenericMethod(type);
-                    var result = genericMethod.Invoke(null, new object[] { item });
-                    items.Add((T)result!);
-                }
-                else
-                {
-                    throw new NotSupportedException($"Type {type.Name} is not supported in Vector<T>");
-                }
-            }
-            return items;
-        }
-    }
-}
-
-
-/// <summary>
-/// Wrapper for GameObject
-/// </summary>
-public class GameObject : UnityObject
-{
-    public string m_Name => this["m_Name"].AsString;
-    public Vector<ComponentPair> m_Component =>
-        Vector<ComponentPair>.From<Vector<ComponentPair>>(this["m_Component"]);
-}
-
-public class ComponentPair : UnityObject
-{
-    public PPtr<Component> component =>
-        PPtr<Component>.From(this["component"]);
-
-
-}
-
-/// <summary>
-/// Wrapper for Component
-/// </summary>
-public class Component : UnityObject
-{
-
-}
-
-/// <summary>
-/// Wrapper for Transform
-/// </summary>
-public class Transform : Component
-{
-    public PPtr<GameObject> m_GameObject =>
-        PPtr<GameObject>.From(this["m_GameObject"]);
-
-    public PPtr<Transform> m_Father =>
-        PPtr<Transform>.From(this["m_Father"]);
-}
-
-public class SInt16 : UnityObject
-{
-    public Int16 Value => this.baseField.AsShort;
-}
-
-
-public class TerrainData : Component
-{
-    // Terrain dimensions
-    public Vec3 m_Heightmap_Scale => new Vec3(
-        this["m_Heightmap.m_Scale.x"].AsFloat,
-        this["m_Heightmap.m_Scale.y"].AsFloat,
-        this["m_Heightmap.m_Scale.z"].AsFloat
-    );
-
-    public int m_Heightmap_Resolution => this["m_Heightmap.m_Resolution"].AsInt;
-
-    // Heights are stored as 16-bit integers (0-65535)
-    public short[] m_Heightmap_Heights
-    {
-        get
-        {
-            Vector<SInt16> heightsField = Vector<SInt16>.From<Vector<SInt16>>(this["m_Heightmap.m_Heights"]);
-            var byteArray = heightsField.Items.Select(h => h.Value).ToArray();
-
-            // Convert bytes to shorts
-            short[] heights = new short[byteArray.Length];
-            Buffer.BlockCopy(byteArray, 0, heights, 0, byteArray.Length);
-            return heights;
-        }
-    }
-}
-
-public class Terrain : Component
-{
-    public PPtr<TerrainData> m_TerrainData =>
-        PPtr<TerrainData>.From(this["m_TerrainData"]);
-}
-
-/// <summary>
-/// Represents a unity level file = Scene
-/// </summary>
-public class Level
-{
-    public AssetsFileInstance fileInstance;
-    public AssetsFile file;
-    public AssetsManager assetsManager;
-
-    public List<Transform> rootTransforms;
-    public List<GameObject> rootGameObjects;
-
-    public Level(AssetsManager assetsManager, string filePath)
-    {
-        this.assetsManager = assetsManager;
-
-        fileInstance = assetsManager.LoadAssetsFile(filePath, true);
-        file = fileInstance.file;
-
-        assetsManager.LoadClassDatabaseFromPackage(file.Metadata.UnityVersion);
-
-        rootTransforms = GetRootTransforms();
-        rootGameObjects = GetRootGameObjects();
-    }
-
-    public List<Transform> GetRootTransforms()
-    {
-        var transformInfos = file.GetAssetsOfType(AssetClassID.Transform);
-
-        var result = new List<Transform>();
-
-        foreach (var info in transformInfos)
-        {
-            var baseField = assetsManager.GetBaseField(fileInstance, info);
-            long father = baseField["m_Father"]["m_PathID"].AsLong;
-
-            if (father == 0)
-            {
-                var wrapper = new Transform();
-                wrapper.SetField(baseField);
-                result.Add(wrapper);
+                catch (Exception ex) { Console.WriteLine( $"Error: {ex.Message}" ); }
             }
         }
 
-        return result;
-    }
-
-    public List<GameObject> GetRootGameObjects()
-    {
-        List<GameObject> result = new();
-        if (this.rootTransforms.Count == 0)
+        static void ExportGeometryOnly(AssetTypeValueField tData, string name)
         {
-            return result;
-        }
+            Console.WriteLine( $"Processing Geometry: {name}..." );
 
-        foreach (var t in this.rootTransforms)
-        {
-            var go = t.m_GameObject.GetObject(fileInstance, assetsManager);
-            result.Add(go);
-        }
-
-        return result;
-    }
-}
-
-public class Core
-{
-    public static AssetsManager assetsManager = new();
-
-    public static void Main(string[] args)
-    {
-        Init();
-
-        string filePath = Path.Combine(GamePath, "level2");
-        Level level = new Level(assetsManager, filePath);
-
-        // Collect all terrains with their positions
-        var terrainsJson = new TerrainsJson();
-
-        foreach (GameObject obj in level.rootGameObjects)
-        {
-            // Get transform for position, rotation, scale
-            Vec3 position = new Vec3(0, 0, 0);
-            Vec4 rotation = new Vec4(0, 0, 0, 1);
-            Vec3 scale = new Vec3(1, 1, 1);
-
-            foreach (ComponentPair compPair in obj.m_Component.Items)
+            // 1. GET HEIGHTMAP FIELD
+            var m_Heightmap = tData["m_Heightmap"];
+            if (m_Heightmap.IsDummy)
             {
-                var fullCompInfo = compPair.component.GetExt(level.fileInstance, level.assetsManager);
-                var compTypeInfo = (AssetClassID)fullCompInfo.info.TypeId;
-
-                // Get transform first for position
-                if (compTypeInfo == AssetClassID.Transform)
-                {
-                    // Get position from transform
-                    var posField = fullCompInfo.baseField["m_LocalPosition"];
-                    position = new Vec3(
-                        posField["x"].AsFloat,
-                        posField["y"].AsFloat,
-                        posField["z"].AsFloat
-                    );
-
-                    // Rotation (Quaternion)
-                    var rotField = fullCompInfo.baseField["m_LocalRotation"];
-                    rotation = new Vec4(
-                        rotField["x"].AsFloat,
-                        rotField["y"].AsFloat,
-                        rotField["z"].AsFloat,
-                        rotField["w"].AsFloat
-                    );
-
-                    // Scale
-                    var scaleField = fullCompInfo.baseField["m_LocalScale"];
-                    scale = new Vec3(
-                        scaleField["x"].AsFloat,
-                        scaleField["y"].AsFloat,
-                        scaleField["z"].AsFloat
-                    );
-                }
-
-                // Check for terrain component
-                if (compTypeInfo == AssetClassID.Terrain)
-                {
-                    Console.WriteLine($"Found terrain on GameObject: {obj.m_Name}");
-
-                    var terrain = new Terrain();
-                    terrain.SetField(fullCompInfo.baseField);
-
-                    // Log PathID to check for uniqueness
-                    var terrainDataPtr = terrain.m_TerrainData;
-                    Console.WriteLine($"  TerrainData PathID: {terrainDataPtr.PathID}");
-
-                    // Get terrain data
-                    var terrainData = terrainDataPtr.GetObject(level.fileInstance, level.assetsManager);
-
-                    // Export terrain with transform data
-                    var terrainInstance = TerrainExporter.ExportTerrain(obj.m_Name, position, rotation, scale, terrainData);
-                    terrainsJson.Terrains.Add(terrainInstance);
-                }
+                Console.WriteLine( "m_Heightmap is missing. Skipping." );
+                return;
             }
-        }
 
-        if (terrainsJson.Terrains.Count > 0)
-        {
-            // Create Export directory if it doesn't exist
-            string exportDir = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "Export");
-            Directory.CreateDirectory(exportDir);
+            // 2. CALCULATE DIMENSIONS
+            // Using m_Resolution (since m_Width/m_Height were missing in your file)
+            int res = m_Heightmap["m_Resolution"].AsInt;
 
-            string outputPath = Path.Combine(exportDir, "terrain.json");
-            TerrainExporter.ExportToFile(terrainsJson, outputPath);
-        }
-        else
-        {
-            Console.WriteLine("No terrains found in the scene.");
+            var m_Scale = m_Heightmap["m_Scale"];
+            float scaleX = m_Scale["x"].AsFloat;
+            float scaleY = m_Scale["y"].AsFloat; // Max Height
+            float scaleZ = m_Scale["z"].AsFloat;
+
+            float worldWidth = (res - 1) * scaleX;
+            float worldDepth = (res - 1) * scaleZ;
+            float maxHeight = scaleY;
+
+            Console.WriteLine( $"Size: {worldWidth:F1}x{worldDepth:F1}, MaxHeight: {maxHeight:F1}, Res: {res}" );
+
+            // 3. EXTRACT HEIGHTS (The Fix)
+            // m_Heights is a "vector" containing "SInt16" (shorts).
+            var heightsField = m_Heightmap["m_Heights"]["Array"];
+
+            // Get the number of items in the array
+            int numHeights = heightsField.AsArray.size;
+
+            // Safety check
+            if (numHeights != res * res)
+            {
+                Console.WriteLine( $"Warning: Resolution mismatch. Expected {res * res}, got {numHeights}. Using available data." );
+            }
+
+            List<float> heightList = new List<float>( numHeights );
+
+            // Iterate through the AssetTools array
+            for (int i = 0; i < numHeights; i++)
+            {
+                // Access the individual Int16 element
+                // We use AsInt because AssetsTools reads numbers as generic Ints/Longs
+                int val = heightsField[i].AsInt;
+
+                // Unity Int16 logic: 0 to 32768 maps to 0.0 to 1.0
+                // Cast to float for precision
+                float normalized = (float)val / 32768.0f;
+
+                heightList.Add( normalized * maxHeight );
+            }
+
+            // 4. SAVE JSON
+            var exportObj = new
+            {
+                name = name,
+                width = worldWidth,
+                depth = worldDepth,
+                maxHeight = maxHeight,
+                resolution = res,
+                heightMap = heightList
+            };
+
+            string json = JsonConvert.SerializeObject( exportObj, Formatting.None );
+            File.WriteAllText( $"{name}.json", json );
+            Console.WriteLine( $"Saved {name}.json" );
         }
     }
-
-    public static void Init()
-    {
-        assetsManager.LoadClassPackage("uncompressed.tpk");
-    }
-
-    public static string GamePath =
-        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Eterspire\\Eterspire_Data";
 }
