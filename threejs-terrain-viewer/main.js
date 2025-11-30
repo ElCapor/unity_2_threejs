@@ -1,74 +1,78 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-// Setup Scene
+// Setup
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x111111); // Dark background
-
+scene.background = new THREE.Color(0x222222);
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+new OrbitControls(camera, renderer.domElement);
 
-const controls = new OrbitControls(camera, renderer.domElement);
-
-// Add light so we can see depth
+// Lights
 const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(100, 500, 100);
+light.position.set(500, 1000, 500);
 scene.add(light);
 scene.add(new THREE.AmbientLight(0x404040));
 
-async function loadTerrain() {
+async function loadFullMap() {
     try {
-        // Replace with your generated filename
-        const response = await fetch('./Terrain_1234.json'); 
-        const data = await response.json();
+        const res = await fetch('./FullMap.json');
+        const data = await res.json();
 
-        const { width, depth, resolution, heightMap, maxHeight } = data;
+        console.log(`Loaded ${data.terrains.length} chunks.`);
 
-        console.log(`Loading Terrain: ${width}x${depth}, Res: ${resolution}`);
+        data.terrains.forEach(chunk => {
+            // 1. Create Geometry
+            // Segments = Resolution - 1
+            const geometry = new THREE.PlaneGeometry(chunk.width, chunk.depth, chunk.resolution - 1, chunk.resolution - 1);
 
-        // 1. Create Plane Geometry
-        // Segments = Resolution - 1
-        const geometry = new THREE.PlaneGeometry(width, depth, resolution - 1, resolution - 1);
+            // 2. Apply Heights
+            const posAttr = geometry.attributes.position;
+            for (let i = 0; i < posAttr.count; i++) {
+                posAttr.setZ(i, chunk.heightMap[i]);
+            }
 
-        // 2. Apply Heights
-        const pos = geometry.attributes.position;
-        
-        for (let i = 0; i < pos.count; i++) {
-            // Data is already in world units from C#
-            pos.setZ(i, heightMap[i]);
-        }
+            // 3. Rotate to ground (XZ)
+            geometry.rotateX(-Math.PI / 2);
+            geometry.computeVertexNormals();
 
-        // 3. Rotate to lie flat (XZ plane)
-        geometry.rotateX(-Math.PI / 2);
-        geometry.computeVertexNormals();
+            // 4. Material
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x44aa88,
+                wireframe: true, 
+                side: THREE.DoubleSide
+            });
 
-        // 4. Create Material (Green Wireframe for checking)
-        const material = new THREE.MeshStandardMaterial({
-            color: 0x00ff00,
-            wireframe: true, // Set to false to see solid mesh
-            side: THREE.DoubleSide
+            const mesh = new THREE.Mesh(geometry, material);
+
+            // 5. POSITIONING (The Critical Part)
+            // Unity Position (chunk.x, chunk.z) is the CORNER of the terrain.
+            // Three.js PlaneGeometry position is the CENTER.
+            // We must shift by +Width/2 and +Depth/2.
+            
+            mesh.position.set(
+                chunk.x + (chunk.width / 2),
+                chunk.y,
+                chunk.z + (chunk.depth / 2)
+            );
+
+            scene.add(mesh);
         });
 
-        const mesh = new THREE.Mesh(geometry, material);
-        
-        // Center the mesh visually
-        mesh.position.set(0, 0, 0); 
-        
-        scene.add(mesh);
-
-        // Adjust Camera
-        camera.position.set(0, maxHeight * 2, width);
-        controls.target.set(0, 0, 0);
-        controls.update();
+        // Center Camera on first chunk
+        if (data.terrains.length > 0) {
+            const first = data.terrains[0];
+            camera.position.set(first.x, 100, first.z);
+        }
 
     } catch (e) {
-        console.error("Error loading JSON:", e);
+        console.error("Error loading map:", e);
     }
 }
 
-loadTerrain();
+loadFullMap();
 
 function animate() {
     requestAnimationFrame(animate);
