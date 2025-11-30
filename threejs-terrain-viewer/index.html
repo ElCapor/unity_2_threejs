@@ -6,13 +6,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Unity Terrain Viewer</title>
   </head>
-  <body>
     <div id="app">
       <canvas id="terrain-canvas"></canvas>
-      <div id="controls">
-        <button id="toggle-wireframe">Toggle Wireframe</button>
-        <div id="info">
-          <p>Loading terrain...</p>
+      
+      <div id="ui-overlay">
+        <header>
+          <h1>Unity Terrain Viewer</h1>
+          <div class="status-badge" id="connection-status">Ready</div>
+        </header>
+
+        <div id="controls-panel">
+          <div class="control-group">
+            <label for="map-select">Select Map</label>
+            <div class="select-wrapper">
+              <select id="map-select">
+                <option value="" disabled selected>Choose a terrain...</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <button id="toggle-wireframe" class="btn-primary">
+              <span class="icon">🕸️</span> Toggle Wireframe
+            </button>
+          </div>
+
+          <div id="info-panel">
+            <h3>Terrain Info</h3>
+            <div id="info-content">
+              <p class="placeholder">Select a map to view details</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
