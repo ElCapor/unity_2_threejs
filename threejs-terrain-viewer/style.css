@@ -148,6 +148,30 @@ select:focus {
     transform: translateY(-1px);
 }
 
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.btn-secondary {
+    background: rgba(255, 107, 107, 0.2);
+    color: #ff6b6b;
+    border: 1px solid rgba(255, 107, 107, 0.3);
+    padding: 0.75rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 107, 107, 0.3);
+    transform: translateY(-1px);
+}
+
 #info-panel {
     border-top: 1px solid var(--border-color);
     padding-top: 1rem;
@@ -167,4 +191,46 @@ select:focus {
 .placeholder {
     color: var(--text-muted);
     font-style: italic;
+}
+
+.hint {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+#position-overlay {
+    position: absolute;
+    bottom: 2rem;
+    left: 2rem;
+    background: var(--surface-color);
+    backdrop-filter: blur(var(--blur-amount));
+    -webkit-backdrop-filter: blur(var(--blur-amount));
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.75rem;
+    pointer-events: auto;
+    min-width: 280px;
+}
+
+.overlay-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.overlay-row:last-child {
+    margin-bottom: 0;
+}
+
+.overlay-row .label {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.overlay-row .value {
+    color: var(--primary-color);
+    font-weight: 500;
 }
