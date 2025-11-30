@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Unity Terrain Viewer</title>
+  <script type="module" crossorigin src="/assets/index-DBgP6ATM.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-ISvyFRwy.css">
+</head>
+
+<body>
+    <div id="app">
+        <canvas id="terrain-canvas"></canvas>
+
+        <div id="ui-overlay">
+            <header>
+                <h1>Terrain Viewer <span class="version">v2.0</span></h1>
+                <div class="status-badge" id="connection-status">Connected</div>
+            </header>
+
+            <div id="controls-panel">
+                <div class="control-group">
+                    <label for="map-select">Select Terrain</label>
+                    <div class="select-wrapper">
+                        <select id="map-select">
+                            <option value="" disabled selected>Loading maps...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <button id="toggle-wireframe" class="btn-primary">
+                        <span class="icon">🕸️</span> Toggle Wireframe
+                    </button>
+                </div>
+
+                <div class="control-group">
+                    <button id="clear-players" class="btn-secondary">
+                        <span class="icon">🗑️</span> Clear Players
+                    </button>
+                </div>
+
+                <div id="info-panel">
+                    <h3>Terrain Stats</h3>
+                    <div id="info-content">
+                        <p class="placeholder">Select a map to view details</p>
+                        <p class="hint">💡 Click on terrain to spawn players</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
